@@ -1223,16 +1223,24 @@ class MyHandler(http.server.SimpleHTTPRequestHandler):
 
     def do_GET(self):
         if self.path == '/':
-            self.path = '/aegis_standalone.html'
+            # The holographic build (npm run build -> dist/) is the primary UI;
+            # fall back to the legacy single-file HUD when dist/ hasn't been built.
+            if os.path.isfile(os.path.join(DIRECTORY, 'dist', 'index.html')):
+                self.path = '/dist/index.html'
+            else:
+                self.path = '/aegis_standalone.html'
         else:
-            # Vite copies public/* to the dist root at build time, so root-relative refs
-            # like /manifest.json, /sw.js, /aegis-icon.svg resolve on the hosted build.
-            # This plain static server doesn't do that rewrite, so mirror it here: fall
-            # back to public/<path> for anything not found directly under DIRECTORY.
+            # Build-time copies mean a single flat URL namespace maps to three real
+            # locations: the repo root (legacy HUD), dist/ (holographic build assets),
+            # and public/ (icons/manifest copied to dist root at build time). Try them
+            # in that order and serve whichever actually has the file.
             requested = os.path.join(DIRECTORY, self.path.lstrip('/'))
             if not os.path.isfile(requested):
+                dist_path = os.path.join(DIRECTORY, 'dist', self.path.lstrip('/'))
                 public_path = os.path.join(DIRECTORY, 'public', self.path.lstrip('/'))
-                if os.path.isfile(public_path):
+                if os.path.isfile(dist_path):
+                    self.path = '/dist' + self.path
+                elif os.path.isfile(public_path):
                     self.path = '/public' + self.path
         # Zero-config API keys: when git-ignored *.local files sit next to this script,
         # inject them into the served HUD (window.AEGIS_GROQ_KEY, window.AEGIS_ELEVENLABS_KEY,

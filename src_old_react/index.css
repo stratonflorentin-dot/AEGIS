@@ -1,0 +1,79 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  --hud-primary: #00d4ff;        /* Electric cyan — main HUD color */
+  --hud-secondary: #0066ff;      /* Deep blue — secondary elements */
+  --hud-accent: #ff6b35;         /* Orange — alerts and warnings */
+  --hud-success: #00ff88;        /* Green — online / success states */
+  --hud-danger: #ff2244;         /* Red — critical alerts */
+  --hud-gold: #ffd700;           /* Gold — premium/special elements */
+  --bg-deep: #000814;            /* Near-black background */
+  --bg-panel: rgba(0, 20, 50, 0.75);/* Translucent panel background */
+  --bg-glass: rgba(0, 212, 255, 0.04); /* Subtle glass fill */
+  --border-hud: rgba(0, 212, 255, 0.25); /* Panel borders */
+  --glow-sm: 0 0 8px rgba(0, 212, 255, 0.4);
+  --glow-md: 0 0 20px rgba(0, 212, 255, 0.3);
+  --glow-lg: 0 0 40px rgba(0, 212, 255, 0.2);
+  --font-hud: 'Orbitron', 'Share Tech Mono', monospace;
+  --font-body: 'Exo 2', 'Rajdhani', sans-serif;
+}
+
+@layer base {
+  body {
+    @apply bg-bg-deep text-hud-primary font-body overflow-hidden;
+    background-color: var(--bg-deep);
+  }
+}
+
+@layer components {
+  .hud-panel {
+    @apply bg-bg-panel border border-border-hud rounded-lg backdrop-blur-md shadow-glow-sm relative;
+    box-shadow: var(--glow-sm), inset 0 0 30px rgba(0, 212, 255, 0.03);
+  }
+
+  /* Corner accent marks on every panel — like targeting brackets */
+  .hud-panel::before, .hud-panel::after {
+    content: '';
+    @apply absolute w-3 h-3 border-hud-primary opacity-70;
+  }
+  .hud-panel::before {
+    @apply -top-px -left-px border-t-2 border-l-2;
+  }
+  .hud-panel::after {
+    @apply -bottom-px -right-px border-b-2 border-r-2;
+  }
+
+  .hud-grid {
+    background-image:
+      linear-gradient(rgba(0, 212, 255, 0.03) 1px, transparent 1px),
+      linear-gradient(90deg, rgba(0, 212, 255, 0.03) 1px, transparent 1px);
+    background-size: 40px 40px;
+  }
+
+  .scanline {
+    @apply fixed w-full h-0.5 pointer-events-none z-[9999];
+    background: linear-gradient(to right, transparent, rgba(0, 212, 255, 0.5), transparent);
+    animation: scanline 6s linear infinite;
+  }
+}
+
+@keyframes scanline {
+  0%   { top: -2px; opacity: 0; }
+  5%   { opacity: 1; }
+  95%  { opacity: 1; }
+  100% { top: 100vh; opacity: 0; }
+}
+
+.font-hud {
+  font-family: var(--font-hud);
+}
+
+.glow-text {
+  text-shadow: var(--glow-sm);
+}
+
+.glow-text-lg {
+  text-shadow: var(--glow-md);
+}

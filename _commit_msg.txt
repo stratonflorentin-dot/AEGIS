@@ -1,0 +1,16 @@
+Holographic UI: adopt the JARVIS (adewaskar/jarvis) frontend for MINO
+
+- Full React + three.js holographic HUD (react-three-fiber core/orbits/
+  particles, voice loop with wake word, gesture control, ElevenLabs TTS)
+- Brain swapped: anthropic.ts -> groq.ts — same ask/cancel contract, Groq
+  gpt-oss-120b/20b routing, MINO bilingual persona, PC-bridge tool schemas
+  and executors, live /execute metrics injected as per-turn system context
+- Wake word 'hey Jarvis' -> 'hey Mino'; barge-in list includes 'Mino'
+- ElevenLabs model -> eleven_multilingual_v2 (Kiswahili speaks); env keys
+  VITE_GROQ_API_KEY / VITE_ELEVENLABS_* / VITE_BACKEND=direct in .env.local
+- Vite dev proxy bridges tool endpoints to :5001; dev_server.py serves
+  dist/ (holographic build) with fallback to the legacy single-file HUD
+- JARVIS dependency set adopted wholesale (react 19, three 0.185, lockfile
+  via npm ci); legacy tailwind/postcss configs removed; Supabase tier
+  stubbed to null (bridge remains memory-authoritative)
+- Old HUD preserved: legacy_hud.html + src/shared/ engine copies
