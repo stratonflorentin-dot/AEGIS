@@ -4,6 +4,7 @@ import socket
 import os
 import sys
 import json
+import base64
 import subprocess
 import platform
 import threading
@@ -628,6 +629,90 @@ class ReminderManager:
 
 reminder_mgr = ReminderManager(MEMORY_DB_PATH)
 
+GROQ_KEY_FILE = os.path.join(DIRECTORY, 'groq_key.local')
+
+def read_local_groq_key():
+    """Read the optional git-ignored groq_key.local file (one line: the API key)."""
+    try:
+        with open(GROQ_KEY_FILE, 'r', encoding='utf-8') as f:
+            return f.read().strip() or None
+    except OSError:
+        return None
+
+# --- Keyboard automation (Windows: PowerShell SendKeys) -----------------------
+
+_SENDKEYS_SPECIALS = '+^%~(){}[]'
+
+def _sendkeys_escape(text):
+    """Escape a plain string for Windows Forms SendKeys, preserving newlines/tabs."""
+    out = []
+    for ch in text:
+        if ch == '\r':
+            continue
+        if ch == '\n':
+            out.append('{ENTER}')
+        elif ch == '\t':
+            out.append('{TAB}')
+        elif ch in _SENDKEYS_SPECIALS:
+            out.append('{' + ch + '}')
+        else:
+            out.append(ch)
+    return ''.join(out)
+
+_SENDKEY_KEY_CODES = {
+    'enter': '{ENTER}', 'return': '{ENTER}', 'esc': '{ESC}', 'escape': '{ESC}',
+    'tab': '{TAB}', 'space': ' ', 'backspace': '{BACKSPACE}', 'delete': '{DELETE}',
+    'del': '{DELETE}', 'insert': '{INSERT}', 'up': '{UP}', 'down': '{DOWN}',
+    'left': '{LEFT}', 'right': '{RIGHT}', 'home': '{HOME}', 'end': '{END}',
+    'pageup': '{PGUP}', 'pagedown': '{PGDN}', 'printscreen': '{PRTSC}',
+}
+for _n in range(1, 13):
+    _SENDKEY_KEY_CODES[f'f{_n}'] = '{F%d}' % _n
+
+def _send_powershell_keys(keys_expr):
+    """Run a SendKeys expression in a fresh PowerShell process (Unicode-safe via -EncodedCommand)."""
+    ps = ("Add-Type -AssemblyName System.Windows.Forms; "
+          "[System.Windows.Forms.SendKeys]::SendWait('%s')" % keys_expr.replace("'", "''"))
+    encoded = base64.b64encode(ps.encode('utf-16-le')).decode('ascii')
+    subprocess.run(['powershell', '-NoProfile', '-EncodedCommand', encoded],
+                   check=True, timeout=15, capture_output=True, text=True)
+
+def type_text(text, press_enter=False):
+    """Type text into the currently focused window (works for chat apps, forms, editors)."""
+    if not text:
+        return False, 'No text provided.'
+    try:
+        _send_powershell_keys(_sendkeys_escape(text))
+        if press_enter:
+            _send_powershell_keys('{ENTER}')
+        return True, f'Typed {len(text)} characters.'
+    except subprocess.TimeoutExpired:
+        return False, 'Typing timed out.'
+    except subprocess.CalledProcessError as e:
+        return False, f'Typing failed: {(e.stderr or e.stdout or "unknown error").strip()[:200]}'
+    except FileNotFoundError:
+        return False, 'Typing requires Windows (PowerShell).'
+
+def press_key(key):
+    """Press a single key (enter, esc, tab, arrows, f1-f12, letters/digits) in the focused window."""
+    k = (key or '').strip().lower()
+    if not k:
+        return False, 'No key provided.'
+    code = _SENDKEY_KEY_CODES.get(k)
+    if code is None and len(k) == 1 and (k.isalnum() or k in ' ./-_=+'):
+        code = k
+    if code is None:
+        return False, f'Unsupported key: "{key}".'
+    try:
+        _send_powershell_keys(code)
+        return True, f'Pressed {k}.'
+    except subprocess.TimeoutExpired:
+        return False, 'Key press timed out.'
+    except subprocess.CalledProcessError as e:
+        return False, f'Key press failed: {(e.stderr or e.stdout or "unknown error").strip()[:200]}'
+    except FileNotFoundError:
+        return False, 'Key presses require Windows (PowerShell).'
+
 class MyHandler(http.server.SimpleHTTPRequestHandler):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, directory=DIRECTORY, **kwargs)
@@ -1087,6 +1172,33 @@ class MyHandler(http.server.SimpleHTTPRequestHandler):
             self.end_headers()
             self.wfile.write(json.dumps(res).encode())
 
+        elif path == '/type_text':
+            content_length = int(self.headers['Content-Length'])
+            data = json.loads(self.rfile.read(content_length))
+            text = data.get('text', '')
+            press_enter = bool(data.get('press_enter', False))
+            print(f"[AUTOMATION] Type text ({len(text)} chars, enter={press_enter})")
+            success, message = type_text(text, press_enter)
+            res = {"success": success, "message": message}
+            self.send_response(200)
+            self.send_header('Content-Type', 'application/json')
+            self.send_header('Access-Control-Allow-Origin', '*')
+            self.end_headers()
+            self.wfile.write(json.dumps(res).encode())
+
+        elif path == '/press_key':
+            content_length = int(self.headers['Content-Length'])
+            data = json.loads(self.rfile.read(content_length))
+            key = data.get('key', '')
+            print(f"[AUTOMATION] Press key: {key}")
+            success, message = press_key(key)
+            res = {"success": success, "message": message}
+            self.send_response(200)
+            self.send_header('Content-Type', 'application/json')
+            self.send_header('Access-Control-Allow-Origin', '*')
+            self.end_headers()
+            self.wfile.write(json.dumps(res).encode())
+
         else:
             print(f"[404] Route not found: {self.path}")
             self.send_response(404)
@@ -1108,6 +1220,31 @@ class MyHandler(http.server.SimpleHTTPRequestHandler):
                 public_path = os.path.join(DIRECTORY, 'public', self.path.lstrip('/'))
                 if os.path.isfile(public_path):
                     self.path = '/public' + self.path
+        # Zero-config Groq key: when a git-ignored groq_key.local file sits next to this
+        # script, inject it into the served HUD as window.AEGIS_GROQ_KEY so the local
+        # console works without pasting a key in Settings. The key only ever travels to
+        # clients this bridge already serves; it is never committed to the repo.
+        if self.path == '/aegis_standalone.html':
+            key = read_local_groq_key()
+            if key:
+                html_path = os.path.join(DIRECTORY, 'aegis_standalone.html')
+                try:
+                    with open(html_path, 'r', encoding='utf-8') as f:
+                        html = f.read()
+                    injection = '<script>window.AEGIS_GROQ_KEY = %s;</script>' % json.dumps(key)
+                    if '</head>' in html:
+                        html = html.replace('</head>', injection + '\n</head>', 1)
+                    else:
+                        html = injection + '\n' + html
+                    payload = html.encode('utf-8')
+                    self.send_response(200)
+                    self.send_header('Content-Type', 'text/html; charset=utf-8')
+                    self.send_header('Content-Length', str(len(payload)))
+                    self.end_headers()
+                    self.wfile.write(payload)
+                    return
+                except OSError as e:
+                    print(f"[WARN] groq key injection failed, serving static file instead: {e}")
         return super().do_GET()
 
 def validate_environment():

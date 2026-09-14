@@ -216,6 +216,35 @@ export const TOOL_SCHEMAS = [
   {
     type: 'function',
     function: {
+      name: 'type_text',
+      description:
+        "Type text into whatever window/app is currently focused on the Boss's PC (chat apps, forms, editors, search bars). Useful after window_control focus. Newlines send Enter within the text. Requires a local bridge.",
+      parameters: {
+        type: 'object',
+        properties: {
+          text: { type: 'string', description: 'The text to type.' },
+          press_enter: { type: 'boolean', description: 'Also press Enter after typing (e.g. to send a chat message).' },
+        },
+        required: ['text'],
+      },
+    },
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'press_key',
+      description:
+        "Press a single key in the currently focused window on the Boss's PC: enter, esc, tab, space, backspace, delete, insert, arrows (up/down/left/right), home, end, pageup, pagedown, f1-f12, or any single letter/digit. Use after window_control focus, e.g. to accept a dialog or submit a form. Requires a local bridge.",
+      parameters: {
+        type: 'object',
+        properties: { key: { type: 'string' } },
+        required: ['key'],
+      },
+    },
+  },
+  {
+    type: 'function',
+    function: {
       name: 'window_control',
       description: "List open windows, or focus/minimize/maximize/close one by (partial) title, on the Boss's PC. Requires a local bridge.",
       parameters: {

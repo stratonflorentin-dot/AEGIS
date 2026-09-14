@@ -43,3 +43,4 @@ test*.js
 test_bridge_file.txt
 .env.development
 start_bridge.bat
+__pycache__/ 

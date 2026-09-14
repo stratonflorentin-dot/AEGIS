@@ -1,6 +1,6 @@
-# AEGIS — Instrument Console
+# MINO — Instrument Console
 
-AEGIS (formerly JARVIS) is a voice-driven AI assistant with a real system-control backend: it can chat, open apps, search and play music, and control your PC's power state (shutdown/restart/sleep/lock) — all through a local Python bridge.
+MINO (formerly JARVIS, then AEGIS) is a bilingual (English + Kiswahili), voice-driven AI assistant with a real system-control backend: it can chat, open apps, search and play music, type into any focused window, press keys, run shell commands, and control your PC's power state (shutdown/restart/sleep/lock) — all through a local Python bridge.
 
 There are two ways to run it, and they share the same code:
 
@@ -19,14 +19,16 @@ There are two ways to run it, and they share the same code:
    ```bash
    python dev_server.py
    ```
-3. Open the local network address printed in the terminal (e.g. `http://aegis.local:5001`) — **not** a loopback host, that's blocked by policy. Click **INITIALIZE AEGIS**.
-4. Open **⚙ Settings** (top right), paste a free Groq API key from [console.groq.com](https://console.groq.com), click **Save**.
+3. Open the local network address printed in the terminal (e.g. `http://aegis.local:5001`) — **not** a loopback host, that's blocked by policy. Click **INITIALIZE MINO**.
+4. Groq key (pick one):
+   - **Zero-config (recommended on this PC):** drop your key into a `groq_key.local` file next to `dev_server.py` (one line, git-ignored). The bridge injects it into the HUD automatically.
+   - **Manual:** open **⚙ Settings** (top right), paste a free Groq API key from [console.groq.com](https://console.groq.com), click **Save**.
 
-Say *"Aegis, lock my PC"* or click the shield icon to arm hands-free wake-word listening.
+Say *"Mino, lock my PC"* (or *"Mino, fungua YouTube"* in Kiswahili) or click the shield icon to arm hands-free wake-word listening.
 
 ## Chat-only mode (Vercel / phone)
 
-AEGIS is meant to run on your own PC for real PC control — that part can't exist on a hosted platform like Vercel, since there's nothing for it to control there. When no bridge is reachable, the app automatically drops into **chat-only mode**: the Vitals, Media, Power, System Log, and Active Tasks panels hide themselves, leaving just the presence dial, chat, and Quick Launch (which just opens URLs, no PC needed). A note at the bottom of the page confirms you're in this mode.
+MINO is meant to run on your own PC for real PC control — that part can't exist on a hosted platform like Vercel, since there's nothing for it to control there. When no bridge is reachable, the app automatically drops into **chat-only mode**: the Vitals, Media, Power, System Log, and Active Tasks panels hide themselves, leaving just the presence dial, chat, and Quick Launch (which just opens URLs, no PC needed). A note at the bottom of the page confirms you're in this mode.
 
 To deploy the chat-only build to Vercel:
 
@@ -43,7 +45,9 @@ If you *do* want your phone to control your PC remotely, the bridge would need t
 ## Features
 
 - **Real system control**: file management, app launch/close, browser open, and power control (shutdown/restart/sleep have a genuine, cancellable 10-second OS-level delay; lock is instant) — all via `dev_server.py`.
-- **Wake-word voice**: arm the shield toggle for hands-free "Aegis, …" activation; the mic button is push-to-talk.
+- **Wake-word voice**: arm the shield toggle for hands-free "Mino, …" activation; the mic button is push-to-talk.
+- **Bilingual**: speaks English and Kiswahili — it detects the Boss's language and replies in kind (Whisper transcribes voice commands in either language; Kiswahili replies use the browser's speech engine).
+- **Types and controls apps**: can type into any focused window (chat apps, forms, editors), press keys, and run shell commands — near-total PC access.
 - **Spoken replies**: real browser text-to-speech, toggleable.
 - **Music**: the `play_music` tool searches YouTube and plays it embedded, with real volume control.
 - **Live vitals**: CPU, memory, and disk usage polled from the bridge every 5 seconds (local mode only).
@@ -51,9 +55,10 @@ If you *do* want your phone to control your PC remotely, the bridge would need t
 ## Technical Details
 
 - **Frontend**: self-contained HTML/CSS/JS, no framework or CDN dependencies at runtime (custom canvas-drawn presence dial, system fonts only). `aegis_standalone.html` (local) and `index.html` (hosted) both import their engine from `src/shared/` — one shared implementation, not two copies.
-- **AI**: browser calls Groq (`llama-3.3-70b-versatile`) directly — works with or without a bridge. Uses native Groq tool/function-calling (`src/shared/groqAgent.js` + `toolSchemas.js`/`toolExecutors.js`) to take real action, not text-parsed commands.
+- **AI**: browser calls Groq directly — works with or without a bridge. Uses native Groq tool/function-calling (`src/shared/groqAgent.js` + `toolSchemas.js`/`toolExecutors.js`) to take real action, not text-parsed commands. Model routing: `openai/gpt-oss-120b` (with native reasoning) handles complex, analytical, or multi-step turns; `openai/gpt-oss-20b` handles short casual turns for lower latency. The system prompt carries the Boss's local date/time, live system context, and a memory summary.
+- **Groq key**: resolved in order — Settings panel (localStorage) → `window.AEGIS_GROQ_KEY` (injected by the bridge from the git-ignored `groq_key.local`) → `VITE_GROQ_API_KEY` build-time env (`.env.local` locally, or a Vercel project env var for hosted builds). API keys are never committed to the repo.
 - **Bridge**: `dev_server.py`, Python stdlib `http.server` + `psutil`/`pycaw`/`comtypes` (Windows). Port `5001` by default.
 - **Security policy**: loopback addresses are rejected everywhere by design — always use a real hostname or LAN IP.
 
 ---
-*AEGIS online. Standing by, Boss.*
+*MINO online. Standing by, Boss.*

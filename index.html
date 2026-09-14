@@ -3,11 +3,11 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>AEGIS — Neural Link HUD</title>
+    <title>MINO — Neural Link HUD</title>
     <meta name="theme-color" content="#16130f">
     <meta name="apple-mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-    <meta name="apple-mobile-web-app-title" content="AEGIS">
+    <meta name="apple-mobile-web-app-title" content="MINO">
     <link rel="apple-touch-icon" href="/aegis-icon.svg">
     <link rel="icon" href="/aegis-icon.svg" type="image/svg+xml">
     <link rel="manifest" href="/manifest.json">
@@ -284,7 +284,7 @@
     <div class="init-card">
         <h1>Systems Offline</h1>
         <p>Click below to initialize neural links, audio matrix, and instrument systems.</p>
-        <button class="init-btn" type="button" onclick="initializeSystems()">Initialize AEGIS</button>
+        <button class="init-btn" type="button" onclick="initializeSystems()">Initialize MINO</button>
     </div>
 </div>
 
@@ -326,7 +326,7 @@
                 <circle cx="50" cy="50" r="4" fill="#d7a44e"/>
             </svg>
             <div class="brand-text">
-                <h1>Aegis</h1>
+                <h1>Mino</h1>
                 <p>Autonomous Electronic Guardian &amp; Intelligence System</p>
             </div>
         </div>
@@ -405,7 +405,7 @@
                 <div class="panel-head"><p class="panel-title">Signal Log</p><span class="panel-sub" id="log-count">0 entries</span></div>
                 <div class="log-scroll" id="chat-messages"></div>
                 <form class="input-row" id="composer-form">
-                    <input id="chat-input" type="text" placeholder="Command me, Boss says… (or say &quot;Aegis, …&quot;)" autocomplete="off">
+                    <input id="chat-input" type="text" placeholder="Command me, Boss says… (or say &quot;Mino, …&quot;)" autocomplete="off">
                     <button class="send-btn" type="submit" title="Send">
                         <svg viewBox="0 0 24 24" stroke-width="1.8"><path d="m3 11 18-8-8 18-2-8-8-2Z"/></svg>
                     </button>
@@ -469,7 +469,7 @@
 
     </div>
 
-    <footer class="note">AEGIS — real system control via the local bridge. Power actions carry a genuine, cancellable delay.</footer>
+    <footer class="note">MINO — real system control via the local bridge. Power actions carry a genuine, cancellable delay.</footer>
     <p class="no-bridge-note">No local bridge detected — running in chat-only mode. PC control (power, media, vitals) needs <code>python dev_server.py</code> reachable from this device.</p>
 </div>
 
@@ -479,7 +479,7 @@
     // src/shared/bridgeClient.js and applies here via getEnvConfig/aegisFetch/postJSON below.
     // The one "localhost" reference still in this file's markup (Settings panel's "Use Local
     // HUD" link) is a same-machine convenience shortcut, not a configured bridge default.
-    import { getStoredKey, getEnvConfig, postJSON } from '/src/shared/bridgeClient.js';
+    import { getStoredKey, getEnvConfig, postJSON, resolveGroqKey } from '/src/shared/bridgeClient.js';
     import { APP_URLS } from '/src/shared/appUrls.js';
     import { buildSystemPrompt } from '/src/shared/systemPrompt.js';
     import { TOOL_SCHEMAS } from '/src/shared/toolSchemas.js';
@@ -554,7 +554,7 @@
         setVolumeUI,
         togglePlaybackUI,
         onPowerCountdown: (action) => startPowerCountdown(action),
-        getApiKey: () => getStoredKey('aegis_groq_key', 'jarvis_groq_key') || '',
+        getApiKey: () => resolveGroqKey(),
         // No vision-capable model is currently enabled on Groq for this account (checked live
         // against /v1/models) — set this once one is available to enable the take_screenshot
         // description step; until then the tool still captures the screenshot, it just can't
@@ -673,7 +673,7 @@
         el.className = 'log-entry ' + (opts.system ? 'system' : (isUser ? 'from-user' : 'from-aegis'));
         if (!opts.system) {
             const meta = document.createElement('div'); meta.className = 'log-meta';
-            meta.innerHTML = '<span>' + (isUser ? 'Boss' : 'Aegis') + '</span><span>' + timeNow() + '</span>';
+            meta.innerHTML = '<span>' + (isUser ? 'Boss' : 'Mino') + '</span><span>' + timeNow() + '</span>';
             el.appendChild(meta);
         }
         const body = document.createElement('div'); body.className = 'log-text'; body.textContent = text;
@@ -686,7 +686,7 @@
     }
     function addTyping() {
         const el = document.createElement('div'); el.className = 'log-entry from-aegis';
-        el.innerHTML = '<div class="log-meta"><span>Aegis</span><span>' + timeNow() + '</span></div><div class="log-text"><span class="typing-dots"><span></span><span></span><span></span></span></div>';
+        el.innerHTML = '<div class="log-meta"><span>Mino</span><span>' + timeNow() + '</span></div><div class="log-text"><span class="typing-dots"><span></span><span></span><span></span></span></div>';
         chatMessages.appendChild(el); chatMessages.scrollTop = chatMessages.scrollHeight;
         return el;
     }
@@ -723,7 +723,7 @@
     const AEGIS_VOICE_PREDICATE = (v) => (v.lang === 'en-GB' && v.name.toLowerCase().includes('male')) || v.name.includes('Google UK English Male') || v.name.includes('Arthur') || v.name.includes('Daniel');
     async function speak(text) {
         if (!voiceOn) return;
-        const apiKey = getStoredKey('aegis_groq_key', 'jarvis_groq_key') || '';
+        const apiKey = resolveGroqKey();
         await speakGroqOrBrowser(text, {
             apiKey,
             voicePredicate: AEGIS_VOICE_PREDICATE,
@@ -737,7 +737,7 @@
     }
 
     /* ---------------- Voice input (real STT) ---------------- */
-    const WAKE_WORD = 'aegis';
+    const WAKE_WORD = 'mino';
     let recognition;
     let isListening = false;
     let alwaysListening = false;
@@ -758,7 +758,7 @@
     async function finalizeVoiceCommand(fallbackText) {
         const blob = await stopRecording();
         let text = fallbackText;
-        const apiKey = getStoredKey('aegis_groq_key', 'jarvis_groq_key') || '';
+        const apiKey = resolveGroqKey();
         if (apiKey && blob && blob.size > 0) {
             try {
                 const whisperText = await transcribeWithGroq({ apiKey, blob });
@@ -833,7 +833,7 @@
         if (!val) return;
         if (/\b(stop|abort|cancel)\b/.test(val.toLowerCase())) {
             cancelSpeech();
-            addMessage('Aegis', 'Emergency stop initiated. All pending tasks terminated, Boss.');
+            addMessage('Mino', 'Emergency stop initiated. All pending tasks terminated, Boss.');
             return;
         }
 
@@ -847,12 +847,12 @@
             typingEl.remove(); entryCount--;
             presence.thinking = false; renderPresence();
             if (text) {
-                addMessage('Aegis', text);
+                addMessage('Mino', text);
                 syncMessage('assistant', text).catch(() => {});
             }
         }
 
-        const API_KEY = getStoredKey('aegis_groq_key', 'jarvis_groq_key') || '';
+        const API_KEY = resolveGroqKey();
         if (!API_KEY) {
             finish('Boss, I need a Groq API key to activate my neural link. Open Settings (top right) and enter one.');
             return;
@@ -908,7 +908,7 @@
             const key = tile.dataset.app;
             const url = APP_URLS[key];
             if (url) window.open(url, '_blank');
-            addMessage('Aegis', `Opening ${tile.textContent.trim()}, Boss.`);
+            addMessage('Mino', `Opening ${tile.textContent.trim()}, Boss.`);
             logTerminal(`app:open -> ${key} · SUCCESS`);
         });
     });
@@ -949,20 +949,20 @@
             const kind = btn.dataset.power;
             if (kind === 'lock' || kind === 'sleep') {
                 const data = await callPower(kind);
-                addMessage('Aegis', data.message || (kind === 'lock' ? 'Workstation locked.' : 'Sleeping now.'));
+                addMessage('Mino', data.message || (kind === 'lock' ? 'Workstation locked.' : 'Sleeping now.'));
                 return;
             }
-            addMessage('Aegis', titleCase(kind) + ' in 10 seconds, Boss. Press Cancel to stop it.');
+            addMessage('Mino', titleCase(kind) + ' in 10 seconds, Boss. Press Cancel to stop it.');
             const data = await callPower(kind);
             if (data.success) startPowerCountdown(kind);
-            else addMessage('Aegis', 'Could not reach the bridge to ' + kind + '. ' + (data.message || ''));
+            else addMessage('Mino', 'Could not reach the bridge to ' + kind + '. ' + (data.message || ''));
         });
     });
 
     cancelPowerBtn.addEventListener('click', async () => {
         clearCountdown();
         const data = await callPower('cancel');
-        addMessage('Aegis', data.success ? 'Cancelled. Standing down.' : ('Cancel failed: ' + (data.message || 'unknown error')));
+        addMessage('Mino', data.success ? 'Cancelled. Standing down.' : ('Cancel failed: ' + (data.message || 'unknown error')));
     });
 
     /* ---------------- Media controls ---------------- */
@@ -1000,7 +1000,7 @@
         }
         if (highCpuStreak >= CPU_NUDGE_STREAK_REQUIRED && Date.now() - lastNudgeAt > CPU_NUDGE_COOLDOWN_MS) {
             lastNudgeAt = Date.now();
-            addMessage('Aegis', `Heads up, Boss — CPU's been pinned above ${CPU_NUDGE_THRESHOLD}% for a while now.`);
+            addMessage('Mino', `Heads up, Boss — CPU's been pinned above ${CPU_NUDGE_THRESHOLD}% for a while now.`);
         }
     }
 
@@ -1036,7 +1036,7 @@
             const data = await postJSON('/reminders', { action: 'check' });
             if (data.success && data.due && data.due.length) {
                 for (const reminder of data.due) {
-                    addMessage('Aegis', `Reminder, Boss: ${reminder.message}`);
+                    addMessage('Mino', `Reminder, Boss: ${reminder.message}`);
                 }
             }
         } catch (e) { /* no bridge reachable — no reminders to check */ }
@@ -1051,12 +1051,12 @@
         try {
             const history = await fetchRecentMessages();
             for (const m of history) {
-                addMessage(m.role === 'user' ? 'Boss' : 'Aegis', m.content, { skipSpeak: true });
+                addMessage(m.role === 'user' ? 'Boss' : 'Mino', m.content, { skipSpeak: true });
             }
         } catch (e) { /* Supabase unavailable/unconfigured — no history to replay */ }
 
-        addMessage('Aegis', 'Neural links initialized. Instrument systems operational. All systems nominal, Boss. How can I assist you today?');
-        updateLinkUI(getStoredKey('aegis_groq_key', 'jarvis_groq_key') ? 'CONNECTED' : 'DISCONNECTED');
+        addMessage('Mino', 'Neural links initialized. Instrument systems operational. All systems nominal, Boss. How can I assist you today?');
+        updateLinkUI(resolveGroqKey() ? 'CONNECTED' : 'DISCONNECTED');
     };
 
     function updateLinkUI(status) {
@@ -1068,7 +1068,7 @@
         const panel = document.getElementById('settings-panel');
         panel.classList.toggle('hidden');
         const config = getEnvConfig();
-        document.getElementById('groq-key-input').value = getStoredKey('aegis_groq_key', 'jarvis_groq_key') || '';
+        document.getElementById('groq-key-input').value = resolveGroqKey();
         document.getElementById('bridge-url-input').value = getStoredKey('aegis_bridge_url', 'jarvis_bridge_url') || '';
         document.getElementById('bridge-url-input').placeholder = config.BRIDGE_URL;
         document.getElementById('bridge-url-hint').textContent = `Active Link: ${config.BRIDGE_URL}`;
@@ -1106,7 +1106,7 @@
 
         updateLinkUI(key ? 'CONNECTED' : 'DISCONNECTED');
         window.toggleSettings();
-        addMessage('Aegis', 'Neural link configuration updated, Boss. Systems recalibrated.');
+        addMessage('Mino', 'Neural link configuration updated, Boss. Systems recalibrated.');
     };
 
     if ('serviceWorker' in navigator) {

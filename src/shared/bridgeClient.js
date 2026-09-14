@@ -13,6 +13,21 @@ export function getStoredKey(newKey, oldKey) {
   return legacy;
 }
 
+// Groq API key resolution order:
+// 1. Settings panel (localStorage) — what the Boss typed, always wins.
+// 2. window.AEGIS_GROQ_KEY — injected by dev_server.py when serving the local HUD,
+//    read from the git-ignored groq_key.local file (never leaves the LAN bridge).
+// 3. VITE_GROQ_API_KEY build-time env (Vite path only; undefined when served raw
+//    by the Python bridge, where the optional chain safely falls through).
+export function resolveGroqKey() {
+  return (
+    getStoredKey('aegis_groq_key', 'jarvis_groq_key') ||
+    window.AEGIS_GROQ_KEY ||
+    import.meta.env?.VITE_GROQ_API_KEY ||
+    ''
+  );
+}
+
 export function isLocalhost(host) {
   return ['localhost', '127.0.0.1', '[::1]', '::1'].some((f) => host.toLowerCase().includes(f));
 }

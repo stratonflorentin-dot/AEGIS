@@ -1,18 +1,35 @@
-// Native Groq tool-calling agentic loop — replaces the old ACTION:X:Y text-parsing hack.
-// Runs entirely client-side: the browser talks to api.groq.com directly, exactly like the
-// old askAegis() did (dev_server.py's /proxy exists as a CORS escape hatch but is unused
-// here because direct calls already work).
-// llama-3.3-70b-versatile occasionally emits a malformed pseudo-XML function call (Groq
-// error code `tool_use_failed`) under AEGIS's full ~24-tool schema — measured at roughly a
-// 1-in-6 chance per call live against this account. openai/gpt-oss-120b avoids that failure
-// mode, but its verbose reasoning traces plus this account's lower per-model token budget
-// (8000 vs 12000 TPM) make it hit rate limits noticeably faster in practice. Net tradeoff
-// favors llama here: keep the higher budget and terser output, and lean on the retry/
-// tools-drop fallback below (keyed on the `tool_use_failed` error code, not message text,
-// so it catches every phrasing Groq uses for it) to absorb the occasional bad generation.
-const DEFAULT_MODEL = 'llama-3.3-70b-versatile';
+// Native Groq tool-calling agentic loop — runs entirely client-side: the browser talks
+// to api.groq.com directly (dev_server.py's /proxy exists as a CORS escape hatch but is
+// unused here because direct calls already work).
+//
+// Model routing (models available on current Groq accounts — llama-3.3-70b-versatile was
+// retired upstream): openai/gpt-oss-120b is the primary brain (strong reasoning + reliable
+// native tool-calling), openai/gpt-oss-20b handles short casual turns to keep latency low
+// and conserve the 120b token budget. Both are reasoning models; reasoning tokens count
+// against max_tokens, so the cap is generous and reasoning_effort is tuned per route.
+// Groq occasionally emits a malformed pseudo-XML function call (error code
+// `tool_use_failed`) under large tool schemas — the retry/tools-drop fallback below
+// (keyed on the error code, not message text, so it catches every phrasing Groq uses)
+// absorbs the occasional bad generation.
+const DEFAULT_MODEL = 'openai/gpt-oss-120b';
+const FAST_MODEL = 'openai/gpt-oss-20b';
 
-async function callGroq({ apiKey, model, messages, tools, timeoutMs }) {
+// Complexity cues for routing to the 120b brain. Short casual chat ("thanks", "open
+// youtube") routes to the fast model; anything analytical, multi-step, or code/math
+// related gets the full brain.
+const COMPLEXITY_RE =
+  /\b(why|how (come|do|does|can|would|should)|explain|analyz|compar|design|plan|strategy|debug|refactor|optimi[sz]|architect|trade-?offs?|pros and cons|step by step|calculate|solve|equation|prove|write.*(code|script|function|essay|email|letter|report)|code|script|function|algorithm|summar.{0,10}(file|page|article|document)|research)\b/i;
+
+export function pickModel(userMessage) {
+  const text = (userMessage || '').trim();
+  if (!text) return FAST_MODEL;
+  // Long messages almost always carry enough context to deserve the big brain.
+  if (text.length > 240) return DEFAULT_MODEL;
+  if (COMPLEXITY_RE.test(text)) return DEFAULT_MODEL;
+  return FAST_MODEL;
+}
+
+async function callGroq({ apiKey, model, messages, tools, toolChoice, timeoutMs }) {
   const controller = new AbortController();
   const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
   try {
@@ -22,10 +39,11 @@ async function callGroq({ apiKey, model, messages, tools, timeoutMs }) {
       signal: controller.signal,
       body: JSON.stringify({
         model,
-        max_tokens: 2048,
+        max_tokens: 4096,
         temperature: 0.7,
+        reasoning_effort: model === DEFAULT_MODEL ? 'medium' : 'low',
         messages,
-        ...(tools && tools.length ? { tools, tool_choice: 'auto' } : {}),
+        ...(tools && tools.length ? { tools, tool_choice: toolChoice || 'auto' } : {}),
       }),
     });
     return { response };
@@ -38,7 +56,7 @@ async function callGroq({ apiKey, model, messages, tools, timeoutMs }) {
 
 export async function runAgentLoop({
   apiKey,
-  model = DEFAULT_MODEL,
+  model,
   systemPrompt,
   history = [],
   userMessage,
@@ -47,16 +65,18 @@ export async function runAgentLoop({
   maxIterations = 6,
   timeoutMs = 25000,
 }) {
+  // Route per-turn: the caller can still pin a model explicitly.
+  const activeModel = model || pickModel(userMessage);
   const messages = [{ role: 'system', content: systemPrompt }, ...history, { role: 'user', content: userMessage }];
 
   for (let i = 0; i < maxIterations; i++) {
-    // Retry policy for Groq's `tool_use_failed` (malformed function-call generation, seen
-    // under Llama models with many tools available): retry once with tools, then fall back
-    // to a tools-free call so the Boss always gets a real reply, never raw API error text.
+    // Retry policy for Groq's `tool_use_failed` (malformed function-call generation):
+    // retry once with tools, then fall back to a tools-free call so the Boss always
+    // gets a real reply, never raw API error text.
     let response;
     let useTools = tools;
     for (let attempt = 0; attempt < 3; attempt++) {
-      const result = await callGroq({ apiKey, model, messages, tools: useTools, timeoutMs });
+      const result = await callGroq({ apiKey, model: activeModel, messages, tools: useTools, timeoutMs });
       if (result.error) {
         if (result.error.name === 'AbortError') return { text: 'Neural bridge timeout, Boss. Groq took too long to respond.' };
         return { text: `Neural link offline, Boss. I can't reach Groq. Diagnostics: ${result.error.message}` };
@@ -66,10 +86,19 @@ export async function runAgentLoop({
 
       const errData = await response.json().catch(() => ({}));
       if (response.status === 401) return { text: 'Boss, that Groq API key was rejected. Check it in Settings.' };
+      // Free-tier TPM limits (8000/min) trip easily mid-loop: wait out the suggested
+      // backoff and retry once before giving up with a clean persona message.
+      if (response.status === 429 && attempt < 2) {
+        const retryMatch = String(errData.error?.message || '').match(/try again in ([\d.]+)s/i);
+        const waitS = retryMatch ? Math.min(parseFloat(retryMatch[1]) + 0.5, 30) : 12;
+        await new Promise((r) => setTimeout(r, waitS * 1000));
+        continue;
+      }
       if (errData.error?.code === 'tool_use_failed' && attempt < 2) {
         useTools = attempt === 0 ? tools : []; // 2nd retry drops tools entirely
         continue;
       }
+      if (response.status === 429) return { text: "Boss, Groq's free-tier rate limit just caught up with us — give it a minute and try again." };
       return { text: `Neural link disruption, Boss. Error Code: ${response.status}. Details: ${errData.error?.message || 'Unknown'}` };
     }
 
@@ -77,6 +106,8 @@ export async function runAgentLoop({
     const message = data.choices[0].message;
 
     if (message.tool_calls && message.tool_calls.length) {
+      // Strip the reasoning trace when feeding the assistant turn back — only the
+      // content and tool_calls belong in the conversation history.
       messages.push({ role: 'assistant', content: message.content || null, tool_calls: message.tool_calls });
       for (const call of message.tool_calls) {
         let result;
@@ -92,7 +123,7 @@ export async function runAgentLoop({
       continue;
     }
 
-    return { text: message.content };
+    return { text: message.content, model: activeModel };
   }
 
   return { text: "I got a bit tangled in my own instructions there, Boss — could you rephrase that?" };

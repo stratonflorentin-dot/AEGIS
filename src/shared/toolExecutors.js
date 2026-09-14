@@ -164,6 +164,23 @@ export function createToolExecutors(ctx) {
       return postJSON('/clipboard', { action: 'write', text });
     },
 
+    async type_text({ text, press_enter }) {
+      return withTask('TYPE', async () => {
+        logTerminal(`TYPE: ${String(text).slice(0, 40)}${String(text).length > 40 ? '…' : ''}`);
+        const data = await postJSON('/type_text', { text, press_enter: !!press_enter });
+        logTerminal(`type_text -> ${data.success ? 'SUCCESS' : 'FAILED'}`);
+        return data;
+      });
+    },
+
+    async press_key({ key }) {
+      return withTask(`KEY:${String(key).toUpperCase()}`, async () => {
+        const data = await postJSON('/press_key', { key });
+        logTerminal(`press_key:${key} -> ${data.success ? 'SUCCESS' : 'FAILED'}`);
+        return data;
+      });
+    },
+
     async window_control({ action, title }) {
       return withTask(`WINDOW:${action}`.toUpperCase(), async () => {
         const data = await postJSON('/window', { action, title });

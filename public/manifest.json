@@ -1,6 +1,6 @@
 {
-  "name": "AEGIS — Neural Link HUD",
-  "short_name": "AEGIS",
+  "name": "MINO — Neural Link HUD",
+  "short_name": "MINO",
   "description": "Autonomous Electronic Guardian & Intelligence System - Holographic HUD",
   "start_url": "/aegis_standalone.html",
   "display": "standalone",
