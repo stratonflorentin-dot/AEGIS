@@ -479,7 +479,7 @@
     // src/shared/bridgeClient.js and applies here via getEnvConfig/aegisFetch/postJSON below.
     // The one "localhost" reference still in this file's markup (Settings panel's "Use Local
     // HUD" link) is a same-machine convenience shortcut, not a configured bridge default.
-    import { getStoredKey, getEnvConfig, postJSON, resolveGroqKey } from '/src/shared/bridgeClient.js';
+    import { getStoredKey, getEnvConfig, postJSON, resolveGroqKey, resolveElevenLabs, isLocalhost } from '/src/shared/bridgeClient.js';
     import { APP_URLS } from '/src/shared/appUrls.js';
     import { buildSystemPrompt } from '/src/shared/systemPrompt.js';
     import { TOOL_SCHEMAS } from '/src/shared/toolSchemas.js';
@@ -724,8 +724,11 @@
     async function speak(text) {
         if (!voiceOn) return;
         const apiKey = resolveGroqKey();
+        const el = resolveElevenLabs();
         await speakGroqOrBrowser(text, {
             apiKey,
+            elevenLabsApiKey: el.apiKey,
+            elevenLabsVoiceId: el.voiceId,
             voicePredicate: AEGIS_VOICE_PREDICATE,
             onStart: () => { presence.speaking = true; renderPresence(); },
             onEnd: () => { presence.speaking = false; renderPresence(); },
@@ -804,6 +807,9 @@
 
     micBtn.onclick = () => {
         if (!recognition) { addMessage('system', 'Speech recognition not supported in this browser.', { system: true }); return; }
+        if (!navigator.mediaDevices?.getUserMedia && !isLocalhost(location.hostname)) {
+            addMessage('system', 'Microphone access is blocked on LAN addresses (browsers only allow it on secure origins). Open http://localhost:5001 in this browser and I will hear you.', { system: true });
+        }
         if (isListening) { recognition.stop(); return; }
         recognition.continuous = false; recognition.interimResults = false;
         presence.pushListening = true; renderPresence();

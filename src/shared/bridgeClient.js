@@ -28,6 +28,24 @@ export function resolveGroqKey() {
   );
 }
 
+// ElevenLabs voice credentials, same resolution order as the Groq key:
+// Settings (localStorage) → bridge-injected window globals (from the git-ignored
+// elevenlabs_key.local) → Vite build-time env.
+export function resolveElevenLabs() {
+  return {
+    apiKey:
+      getStoredKey('aegis_elevenlabs_key', 'elevenlabs_key') ||
+      window.AEGIS_ELEVENLABS_KEY ||
+      import.meta.env?.VITE_ELEVENLABS_API_KEY ||
+      '',
+    voiceId:
+      getStoredKey('aegis_elevenlabs_voice', 'elevenlabs_voice') ||
+      window.AEGIS_ELEVENLABS_VOICE ||
+      import.meta.env?.VITE_ELEVENLABS_VOICE_ID ||
+      '',
+  };
+}
+
 export function isLocalhost(host) {
   return ['localhost', '127.0.0.1', '[::1]', '::1'].some((f) => host.toLowerCase().includes(f));
 }

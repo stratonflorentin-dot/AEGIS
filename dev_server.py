@@ -639,6 +639,20 @@ def read_local_groq_key():
     except OSError:
         return None
 
+ELEVENLABS_KEY_FILE = os.path.join(DIRECTORY, 'elevenlabs_key.local')
+
+def read_local_elevenlabs():
+    """Read the optional git-ignored elevenlabs_key.local file:
+    line 1 = API key, line 2 = voice ID. Returns (key, voice), either may be None."""
+    try:
+        with open(ELEVENLABS_KEY_FILE, 'r', encoding='utf-8') as f:
+            lines = [ln.strip() for ln in f.read().splitlines() if ln.strip()]
+        key = lines[0] if len(lines) > 0 else None
+        voice = lines[1] if len(lines) > 1 else None
+        return key, voice
+    except OSError:
+        return None, None
+
 # --- Keyboard automation (Windows: PowerShell SendKeys) -----------------------
 
 _SENDKEYS_SPECIALS = '+^%~(){}[]'
@@ -1220,18 +1234,26 @@ class MyHandler(http.server.SimpleHTTPRequestHandler):
                 public_path = os.path.join(DIRECTORY, 'public', self.path.lstrip('/'))
                 if os.path.isfile(public_path):
                     self.path = '/public' + self.path
-        # Zero-config Groq key: when a git-ignored groq_key.local file sits next to this
-        # script, inject it into the served HUD as window.AEGIS_GROQ_KEY so the local
-        # console works without pasting a key in Settings. The key only ever travels to
-        # clients this bridge already serves; it is never committed to the repo.
+        # Zero-config API keys: when git-ignored *.local files sit next to this script,
+        # inject them into the served HUD (window.AEGIS_GROQ_KEY, window.AEGIS_ELEVENLABS_KEY,
+        # window.AEGIS_ELEVENLABS_VOICE) so the local console works without pasting keys in
+        # Settings. Keys only travel to clients this bridge already serves; never committed.
         if self.path == '/aegis_standalone.html':
-            key = read_local_groq_key()
-            if key:
+            injections = []
+            groq_key = read_local_groq_key()
+            if groq_key:
+                injections.append('window.AEGIS_GROQ_KEY = %s;' % json.dumps(groq_key))
+            el_key, el_voice = read_local_elevenlabs()
+            if el_key:
+                injections.append('window.AEGIS_ELEVENLABS_KEY = %s;' % json.dumps(el_key))
+            if el_voice:
+                injections.append('window.AEGIS_ELEVENLABS_VOICE = %s;' % json.dumps(el_voice))
+            if injections:
                 html_path = os.path.join(DIRECTORY, 'aegis_standalone.html')
                 try:
                     with open(html_path, 'r', encoding='utf-8') as f:
                         html = f.read()
-                    injection = '<script>window.AEGIS_GROQ_KEY = %s;</script>' % json.dumps(key)
+                    injection = '<script>%s</script>' % '\n'.join(injections)
                     if '</head>' in html:
                         html = html.replace('</head>', injection + '\n</head>', 1)
                     else:
@@ -1244,7 +1266,7 @@ class MyHandler(http.server.SimpleHTTPRequestHandler):
                     self.wfile.write(payload)
                     return
                 except OSError as e:
-                    print(f"[WARN] groq key injection failed, serving static file instead: {e}")
+                    print(f"[WARN] key injection failed, serving static file instead: {e}")
         return super().do_GET()
 
 def validate_environment():

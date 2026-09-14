@@ -19,10 +19,18 @@ There are two ways to run it, and they share the same code:
    ```bash
    python dev_server.py
    ```
-3. Open the local network address printed in the terminal (e.g. `http://aegis.local:5001`) — **not** a loopback host, that's blocked by policy. Click **INITIALIZE MINO**.
-4. Groq key (pick one):
-   - **Zero-config (recommended on this PC):** drop your key into a `groq_key.local` file next to `dev_server.py` (one line, git-ignored). The bridge injects it into the HUD automatically.
+3. Open the address printed in the terminal — **use `http://localhost:5001` on this PC** (browsers only allow microphone access on secure origins, and localhost is the one allowed over HTTP; the LAN address like `http://192.168.0.196:5001` is for your phone, which can chat and control the PC but cannot use the mic). Click **INITIALIZE MINO**.
+4. API keys (pick either style, per key):
+   - **Zero-config (recommended on this PC):** drop keys into git-ignored local files next to `dev_server.py` and they're injected automatically:
+     - `groq_key.local` — one line: your Groq key.
+     - `elevenlabs_key.local` — line 1: ElevenLabs API key, line 2: voice ID. (The bundled voice ID is the account-owned "SWAHILI MAN" voice, usable on the free plan; the "Robert" voice `BtWabtumIemAotTjP5sk` requires a paid ElevenLabs plan — swap it in after upgrading and MINO will use it, with automatic fallback otherwise.)
    - **Manual:** open **⚙ Settings** (top right), paste a free Groq API key from [console.groq.com](https://console.groq.com), click **Save**.
+5. Optional — install MINO like a desktop app:
+   ```bash
+   powershell -ExecutionPolicy Bypass -File scripts\install_mino.ps1            # Start Menu shortcut
+   powershell -ExecutionPolicy Bypass -File scripts\install_mino.ps1 -Startup   # + launch at login
+   ```
+   This creates a **MINO** entry in the Start Menu that starts the bridge and opens the HUD as an app-style window (no browser chrome) on `http://localhost:5001`.
 
 Say *"Mino, lock my PC"* (or *"Mino, fungua YouTube"* in Kiswahili) or click the shield icon to arm hands-free wake-word listening.
 
@@ -48,7 +56,7 @@ If you *do* want your phone to control your PC remotely, the bridge would need t
 - **Wake-word voice**: arm the shield toggle for hands-free "Mino, …" activation; the mic button is push-to-talk.
 - **Bilingual**: speaks English and Kiswahili — it detects the Boss's language and replies in kind (Whisper transcribes voice commands in either language; Kiswahili replies use the browser's speech engine).
 - **Types and controls apps**: can type into any focused window (chat apps, forms, editors), press keys, and run shell commands — near-total PC access.
-- **Spoken replies**: real browser text-to-speech, toggleable.
+- **Spoken replies**: voice chain — ElevenLabs (the Boss's own multilingual voice) → Groq TTS (English) → browser speechSynthesis, toggleable.
 - **Music**: the `play_music` tool searches YouTube and plays it embedded, with real volume control.
 - **Live vitals**: CPU, memory, and disk usage polled from the bridge every 5 seconds (local mode only).
 

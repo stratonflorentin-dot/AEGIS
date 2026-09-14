@@ -1,10 +1,14 @@
-// Groq TTS (Orpheus) with an automatic fallback to the browser's built-in speechSynthesis,
-// so AEGIS is never left silent — missing/rejected key, network failure, or the Groq org
-// not having accepted the model's terms yet at console.groq.com all degrade gracefully.
-// Kiswahili replies skip Groq TTS entirely (Orpheus is English-only) and use the browser
-// engine with a Swahili voice when one is installed.
+// Voice chain (first available wins): ElevenLabs (the Boss's own voice, multilingual)
+// → Groq TTS (Orpheus, English-only) → browser speechSynthesis. Every stage degrades
+// gracefully so AEGIS is never left silent.
 const DEFAULT_MODEL = 'canopylabs/orpheus-v1-english';
 const DEFAULT_VOICE = 'troy'; // deep/warm male voice — closest match on Groq's own roster
+
+// ElevenLabs: the Boss's account voice "SWAHILI MAN" (generated → free-tier usable).
+// The premium "Robert" (BtWabtumIemAotTjP5sk) needs a paid plan; if configured and the
+// API returns payment_required, we transparently retry with the fallback below.
+export const ELEVENLABS_FALLBACK_VOICE = 'uSEgplYQDhDygn5hw4Ka';
+const ELEVEN_MULTILINGUAL_MODEL = 'eleven_multilingual_v2';
 
 // Distinctive Kiswahili words — none occur in ordinary English text, so a single hit
 // is a strong signal. (Kiswahili verbs take prefixes — nime-/uta-/a- — so exact-verb
@@ -25,22 +29,7 @@ export function isKiswahili(text) {
 
 let currentAudio = null;
 
-async function speakGroq({ apiKey, text, voice, model, onStart, onEnd }) {
-  const res = await fetch('https://api.groq.com/openai/v1/audio/speech', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${apiKey}` },
-    body: JSON.stringify({
-      model: model || DEFAULT_MODEL,
-      input: text,
-      voice: voice || DEFAULT_VOICE,
-      response_format: 'wav',
-    }),
-  });
-  if (!res.ok) {
-    const err = await res.json().catch(() => ({}));
-    throw new Error(err.error?.message || `TTS HTTP ${res.status}`);
-  }
-  const blob = await res.blob();
+async function playBlobAudio(blob, { onStart, onEnd }) {
   const url = URL.createObjectURL(blob);
   await new Promise((resolve, reject) => {
     const audio = new Audio(url);
@@ -59,6 +48,57 @@ async function speakGroq({ apiKey, text, voice, model, onStart, onEnd }) {
     };
     audio.play().catch(reject);
   });
+}
+
+async function speakElevenLabs({ apiKey, voiceId, text, onStart, onEnd }) {
+  const render = async (voice) => {
+    const res = await fetch(`https://api.elevenlabs.io/v1/text-to-speech/${voice}`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'xi-api-key': apiKey },
+      body: JSON.stringify({
+        text,
+        model_id: ELEVEN_MULTILINGUAL_MODEL,
+        voice_settings: { stability: 0.5, similarity_boost: 0.75 },
+      }),
+    });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}));
+      const e = new Error(err.detail?.message || `ElevenLabs TTS HTTP ${res.status}`);
+      e.status = res.status;
+      throw e;
+    }
+    return res.blob();
+  };
+  let blob;
+  try {
+    blob = await render(voiceId);
+  } catch (e) {
+    // Paid-plan voice on a free account: retry once with the free-tier owned voice.
+    if ((e.status === 402 || /payment_required|paid_plan/i.test(e.message)) && voiceId !== ELEVENLABS_FALLBACK_VOICE) {
+      blob = await render(ELEVENLABS_FALLBACK_VOICE);
+    } else {
+      throw e;
+    }
+  }
+  await playBlobAudio(blob, { onStart, onEnd });
+}
+
+async function speakGroq({ apiKey, text, voice, model, onStart, onEnd }) {
+  const res = await fetch('https://api.groq.com/openai/v1/audio/speech', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${apiKey}` },
+    body: JSON.stringify({
+      model: model || DEFAULT_MODEL,
+      input: text,
+      voice: voice || DEFAULT_VOICE,
+      response_format: 'wav',
+    }),
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error(err.error?.message || `TTS HTTP ${res.status}`);
+  }
+  await playBlobAudio(await res.blob(), { onStart, onEnd });
 }
 
 function speakBrowser(text, { onStart, onEnd, voicePredicate, lang } = {}) {
@@ -87,7 +127,17 @@ function speakBrowser(text, { onStart, onEnd, voicePredicate, lang } = {}) {
   }
 }
 
-export async function speak(text, { apiKey, voice, model, onStart, onEnd, voicePredicate } = {}) {
+export async function speak(text, { apiKey, voice, model, elevenLabsApiKey, elevenLabsVoiceId, onStart, onEnd, voicePredicate } = {}) {
+  // ElevenLabs first: the Boss's own voice, and multilingual — it handles Kiswahili too,
+  // so the Orpheus/English-only detour is skipped when it's available.
+  if (elevenLabsApiKey && elevenLabsVoiceId) {
+    try {
+      await speakElevenLabs({ apiKey: elevenLabsApiKey, voiceId: elevenLabsVoiceId, text, onStart, onEnd });
+      return;
+    } catch (e) {
+      console.warn('ElevenLabs TTS unavailable, falling down the voice chain:', e.message);
+    }
+  }
   if (isKiswahili(text)) {
     // Groq's Orpheus voices are English-only — Kiswahili goes straight to the browser engine.
     speakBrowser(text, { onStart, onEnd, lang: 'sw-KE' });
